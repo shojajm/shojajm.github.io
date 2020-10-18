@@ -1,0 +1,369 @@
+---
+title: "CEE 218 HW 1"
+output: html_document
+---
+
+```{r setup, include=F}
+rm(list=ls())
+knitr::opts_chunk$set(warning = F, message = F)
+format(Sys.Date(), '%B %d, %Y')
+library(tidyverse)
+library(plotly)
+library(sf)
+library(tigris)
+library(leaflet)
+library(censusapi)
+library(ggplot2)
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+```
+
+## Combining Data for Years 2017 to 2020: Electricity
+
+```{r}
+years <- c(2017,2018,2019,2020)
+quarters <- 1:4
+type <- "Electric"
+filename <- '0'
+
+pge_17to20elec <- NULL
+
+for(year in years) {
+
+  for(quarter in quarters) {
+    
+    if (year == 2020 & quarter == (3)){
+      break
+      }
+  
+      filename <- 
+      paste0(
+      "PGE_",
+      year,
+      "_Q",
+      quarter,
+      "_",
+      type,
+      "UsageByZip.csv")
+  
+      print(filename)
+  
+      temp <- read_csv(filename)
+  
+      pge_17to20elec <- rbind(pge_17to20elec,temp)
+    # Note rbind requires field names to be consistent for every new thing that you add.
+  
+      saveRDS(pge_17to20elec, "pge_17to20elec.rds")
+  }
+}
+```
+
+## Combining Data for Years 2017 to 2020: Gas
+
+```{r}
+years <- c(2017,2018,2019,2020)
+quarters <- 1:4
+type2 <- "Gas"
+
+pge_17to20gas <- NULL
+
+for(year in years) {
+  
+  for(quarter in quarters) {
+    
+     if (year == 2020 & quarter == (3)){
+      break
+      }
+    
+    filename <- 
+      paste0(
+        "PGE_",
+        year,
+        "_Q",
+        quarter,
+        "_",
+        type2,
+        "UsageByZip.csv"
+      )
+    
+    print(filename)
+    
+    temp2 <- read_csv(filename)
+    
+    pge_17to20gas <- rbind(pge_17to20gas,temp2)
+    # Note rbind requires field names to be consistent for every new thing that you add.
+    
+    saveRDS(pge_17to20gas, "pge_17to20gas.rds")
+  }
+}
+```
+
+
+## Filter Residential and Commercial Data and Group: Electricity
+
+```{r}
+
+pge_final_elec <-
+  pge_17to20elec %>% 
+  filter(
+    CUSTOMERCLASS %in% 
+      c(
+        "Elec- Residential",
+        "Elec- Commercial"
+      )
+  ) %>% 
+  select(
+    !c(COMBINED, AVERAGEKWH)
+  ) %>% 
+  group_by(YEAR,MONTH, CUSTOMERCLASS) %>% 
+  summarize(
+    TOTALKWH = 
+      sum(
+        TOTALKWH, 
+        na.rm = T
+      ),
+    TOTALCUSTOMERS =
+      sum(
+        TOTALCUSTOMERS,
+        na.rm = T
+      )
+  ) %>% 
+  mutate(
+    AVERAGEKWH =
+      TOTALKWH/TOTALCUSTOMERS
+  )
+
+pge_final_elec
+
+```
+
+## Filter Residential and Commercial Data and Group: Gas
+
+```{r}
+pge_final_gas <-
+  pge_17to20gas %>% 
+  filter(
+    CUSTOMERCLASS %in% 
+      c(
+        "Gas- Residential",
+        "Gas- Commercial"
+      )
+  ) %>% 
+  select(
+    !c(COMBINED, AVERAGETHM)
+  ) %>% 
+  group_by(YEAR,MONTH, CUSTOMERCLASS) %>% 
+  summarize(
+    TOTALTHM = 
+      sum(
+        TOTALTHM, 
+        na.rm = T
+      ),
+    TOTALCUSTOMERS =
+      sum(
+        TOTALCUSTOMERS,
+        na.rm = T
+      )
+  ) %>% 
+  mutate(
+    AVERAGETHM =
+      TOTALTHM/TOTALCUSTOMERS
+  )
+
+pge_final_gas
+```
+
+
+## Converting Units (KWH's and Therms) to kBTUs
+
+```{r}
+elec_kbtu <- (pge_final_elec$TOTALKWH)*3.41214
+pge_final_elec$TOTALKBTU <- with(pge_final_elec,elec_kbtu)
+
+gas_kbtu <- (pge_final_gas$TOTALTHM)*100
+pge_final_gas$TOTALKBTU <- with(pge_final_gas,gas_kbtu)
+```
+
+## Line Chart of Energy Consumption for Residential and Commercial in KBTUs Over Time
+
+### In the chart below we can see that there is not a huge shift in electricty consumption from pre Covid-19 times to post Covid-19 times. We can detect drops in commercial gas and electric consumption with increases in residential gas and electric consumption. However, seperating those occurences from normal energy trends due to weather and other factors make it difficult to determine if the noticed trends are soley caused by Covid. We can see these trends by noticing that energy consumption for residential buildings is highest in the winter (presumably for heating), while commerical buildings have their energy peaks in the summer (mostly for cooling).
+
+
+```{r}
+
+library(dplyr)
+elec_res <- filter(pge_final_elec, 
+                   CUSTOMERCLASS == "Elec- Residential")
+elec_com <- filter(pge_final_elec, 
+                   CUSTOMERCLASS == "Elec- Commercial")
+gas_res <- filter(pge_final_gas, 
+                   CUSTOMERCLASS == "Gas- Residential")
+gas_com <- filter(pge_final_gas, 
+                   CUSTOMERCLASS == "Gas- Commercial")
+
+both_matrix <- 
+  rbind(elec_res,elec_com) %>% 
+  rbind(gas_res) %>% 
+  rbind(gas_com) %>% 
+  mutate('Date'= paste(sep = '-',YEAR,MONTH,'01') %>% as.Date())
+
+
+ggplot(both_matrix, aes(x=Date, y=TOTALKBTU, group=CUSTOMERCLASS, color=CUSTOMERCLASS)) +
+  ylab("Total Energy (KBTU)")+ggtitle("Electricity and Gas Usage for 9 Bay Area Counties 2017 - 2020")+
+  geom_line(size=1)
+```
+
+## Seperating Bay Area Counties and Creating Block Groups
+
+```{r}
+ca_counties <- counties("CA", cb = T, progress_bar = F)
+
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+bay_counties <-
+  ca_counties %>%
+  filter(NAME %in% bay_county_names)
+
+ca_cities <- places("CA", cb = T, progress_bar = FALSE)
+
+bay_cities <- ca_cities[bay_counties, ]
+
+bay_cities_within <-
+  ca_cities %>% 
+  st_centroid() %>% 
+  .[bay_counties, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(ca_cities %>% select(GEOID)) %>% 
+  st_as_sf()
+
+bay_cities_within <-
+  ca_cities[which(ca_cities$GEOID %in% st_centroid(ca_cities)[bay_counties, ]$GEOID), ]
+
+bay_cbgs <- block_groups("CA", bay_county_names[1:9], cb = T, progress_bar = F)
+
+bay_cbgs <- 
+  bay_county_names %>% 
+  map_dfr(function(county) {
+    block_groups("CA", county, cb = T, progress_bar = F)
+  })
+
+bay_cbgs_clip <- st_read("https://opendata.arcgis.com/datasets/037fc1597b5a4c6994b89c46a8fb4f06_0.geojson")
+
+```
+## Mapping the Percentage Change in Residential Electricty Use for Bay Area Counties Due To Covid-19
+### The data used for this process is the 2nd quarter electricty data (April, May, June) from 2019 and 2020
+
+```{r}
+elec_q2_2019 <- read_csv("PGE_2019_Q2_ElectricUsageByZip.csv")
+elec_q2_2020 <- read_csv("PGE_2020_Q2_ElectricUsageByZip.csv")
+
+usa_zips <- 
+  zctas(cb = T, progress_bar = F)
+
+bay_zips <-
+  usa_zips %>% 
+  st_centroid() %>% 
+  .[bay_counties, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(usa_zips %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+elec_2019 <-
+  elec_q2_2019 %>% 
+  filter(CUSTOMERCLASS %in% 
+      c(
+        "Elec- Residential")
+      ) %>% 
+  mutate(
+    ZIPCODE = ZIPCODE %>% as.character()
+  ) %>% 
+   mutate(
+    TOTALKWH =TOTALKWH %>% as.numeric()
+  ) %>% 
+  na.omit() %>%
+  group_by(ZIPCODE) %>% 
+  summarize(
+    TOTALKWH = sum(TOTALKWH, na.rm = T)
+  ) %>% 
+  right_join(
+    bay_zips %>% select(GEOID10),
+    by = c("ZIPCODE" = "GEOID10")
+  ) %>% 
+  st_as_sf() %>% 
+  st_transform(4326)
+
+
+elec_2020 <-
+  elec_q2_2020 %>% 
+   filter(CUSTOMERCLASS %in% 
+      c(
+        "Elec- Residential")
+      ) %>% 
+  mutate(
+    ZIPCODE = ZIPCODE %>% as.character()
+  ) %>% 
+  na.omit() %>%
+  group_by(ZIPCODE) %>% 
+  summarize(
+    TOTALKWH = sum(TOTALKWH, na.rm = T)
+  ) %>% 
+  right_join(
+    bay_zips %>% select(GEOID10),
+    by = c("ZIPCODE" = "GEOID10")
+  ) %>% 
+  st_as_sf() %>% 
+  st_transform(4326)
+
+elec_2019$Difference <- elec_2020$TOTALKWH-elec_2019$TOTALKWH
+elec_2019$Perc_Difference<- (elec_2019$Difference/elec_2019$TOTALKWH)*100
+```
+
+## Map of the Change in Residential Electricity Consumption Due to Covid-19
+
+### In the map below we can see the percentage change of electricty consumption for residential buildings to determine the possible effects of Covid-19. For this analysis we compare the total electricity consumption for each zipcode in the Bay Area for the months of April, May, and June of 2019 and 2020. We compared these two time frames so as to eliminate confounding factors such as seasonl weather, which could mask the effects of Covid. Furthermore we picked the months of April, May and June because that is when the infection rate of Covid was highest as well as when the major social distancing policies were put into place. In the map below we can see that most of the zipcodes had a 5 to 20% increase in resdiential electricity consumption with only a handful showing decreases in electricity consumption.
+
+
+```{r}
+res_pal <- colorNumeric(
+  palette = "RdYlBu",
+  domain = 
+    elec_2019$Perc_Difference
+)
+
+leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(
+    data = elec_2019,
+    fillColor = ~res_pal(Perc_Difference),
+    color = "white",
+    opacity = 0.5,
+    fillOpacity = 0.5,
+    weight = 1,
+    label = ~paste0(
+      round(Perc_Difference), 
+      " kWh total in ",
+      ZIPCODE
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = elec_2019,
+    pal = res_pal,
+    values = ~Perc_Difference,
+    title = "Total Residential Percentage Difference<br> between Q2 of 2019 and Q2 of 2020"
+  )
+```
