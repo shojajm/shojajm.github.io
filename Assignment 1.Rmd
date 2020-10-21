@@ -186,7 +186,7 @@ pge_final_gas$TOTALKBTU <- with(pge_final_gas,gas_kbtu)
 
 ## Line Chart of Energy Consumption for Residential and Commercial in KBTUs Over Time
 
-### In the chart below we can see that there is not a huge shift in electricty consumption from pre Covid-19 times to post Covid-19 times. We can detect drops in commercial gas and electric consumption with increases in residential gas and electric consumption. However, seperating those occurences from normal energy trends due to weather and other factors make it difficult to determine if the noticed trends are soley caused by Covid. We can see these trends by noticing that energy consumption for residential buildings is highest in the winter (presumably for heating), while commerical buildings have their energy peaks in the summer (mostly for cooling).
+### In the chart below we can see that there is not a huge shift in electricty consumption from pre Covid-19 times to post Covid-19 times. We can detect drops in commercial gas and electric consumption with increases in residential gas and electric consumption. However, seperating those occurences from normal energy trends due to weather and other factors make it difficult to determine if the noticed trends are soley caused by Covid. We can see these trends by noticing that energy consumption for residential buildings is highest in the winter (presumably for heating), while commerical buildings have their energy peaks in the summer (mostly for cooling). Along with the cyclical/seasonal pattern the graph shows a large spike on September of 2017 across all four categories. This increase in September of 2017 is 50 to 100% higher than the months it's between (August and October). This could either be due to a large increase in energy consumption during that period, or might simply be a measurement error by PGE.
 
 
 ```{r}
@@ -327,11 +327,13 @@ elec_2020 <-
 
 elec_2019$Difference <- elec_2020$TOTALKWH-elec_2019$TOTALKWH
 elec_2019$Perc_Difference<- (elec_2019$Difference/elec_2019$TOTALKWH)*100
+elec_2019 %>% na.omit()
+elec_2019 <- elec_2019[which(elec_2019$Perc_Difference > -40), ]
 ```
 
 ## Map of the Change in Residential Electricity Consumption Due to Covid-19
 
-### In the map below we can see the percentage change of electricty consumption for residential buildings to determine the possible effects of Covid-19. For this analysis we compare the total electricity consumption for each zipcode in the Bay Area for the months of April, May, and June of 2019 and 2020. We compared these two time frames so as to eliminate confounding factors such as seasonl weather, which could mask the effects of Covid. Furthermore we picked the months of April, May and June because that is when the infection rate of Covid was highest as well as when the major social distancing policies were put into place. In the map below we can see that most of the zipcodes had a 5 to 20% increase in resdiential electricity consumption with only a handful showing decreases in electricity consumption.
+### In the map below we can see the percentage change of electricty consumption for residential buildings to determine the possible effects of Covid-19. For this analysis we compare the total electricity consumption for each zipcode in the Bay Area for the months of April, May, and June of 2019 and 2020. We compared these two time frames so as to eliminate confounding factors such as seasonl weather, which could mask the effects of Covid. Furthermore we picked the months of April, May and June because that is when the infection rate of Covid was highest as well as when the major social distancing policies were put into place. In the map below we can see that most of the zipcodes had a 5 to 20% increase in resdiential electricity consumption with only a handful showing decreases in electricity consumption. For the sake of creating a clearer visualization we also removed one outlier which showed a zipcode with -73% residential electricity consumption for the given period. 
 
 
 ```{r}
@@ -347,8 +349,8 @@ leaflet() %>%
     data = elec_2019,
     fillColor = ~res_pal(Perc_Difference),
     color = "white",
-    opacity = 0.5,
-    fillOpacity = 0.5,
+    opacity = 0.9,
+    fillOpacity = 0.9,
     weight = 1,
     label = ~paste0(
       round(Perc_Difference), 
