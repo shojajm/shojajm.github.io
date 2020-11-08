@@ -1,0 +1,582 @@
+---
+title: "CEE 218 HW 2"
+output: html_document
+---
+# An Analysis of Education Outcomes in Contra Costa County
+
+```{r setup, include=F}
+rm(list=ls())
+knitr::opts_chunk$set(warning = F, message = F)
+format(Sys.Date(), '%B %d, %Y')
+library(tidyverse)
+library(plotly)
+library(sf)
+library(tigris)
+library(leaflet)
+library(censusapi)
+library(ggplot2)
+```
+
+
+## Loading ACS Data
+
+```{r}
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+acs_vars_2018_5yr <-
+  listCensusMetadata(
+    name = "2018/acs/acs5",
+    type = "variables"
+  )
+
+acs_vars_2018_1yr <-
+  listCensusMetadata(
+    name = "2018/acs/acs1",
+    type = "variables"
+  )
+
+acs_vars_2019_1yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs1",
+    type = "variables"
+  )
+```
+
+## Comparing Education and Race in Contra Costa County
+
+```{r}
+census_race_labels <- 
+  c(
+    "White Alone",
+    "Black or African American",
+    "American Indian and Alaska Native Alone",
+    "Asian Alone",
+    "Native Hawaiian and Other Pacific Islander Alone)",
+    "Some Other Race Alone",
+    "Two or More Races"
+  )
+
+
+bay_education_race <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs1",
+      vintage = 2019,
+      region = "county:013",
+      regionin = "state:06",
+      vars = paste0("group(B15002",LETTERS[x],")")
+    ) %>%
+      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+      pivot_longer(
+        ends_with("E"),
+        names_to = "variable",
+        values_to = "estimate"
+      ) %>%
+      left_join(
+        acs_vars_2019_1yr %>% 
+          select(name, label), 
+        by = c("variable" = "name")
+      ) %>% 
+      select(-variable) %>% 
+      separate(
+        label,
+        into = c(NA,NA,NA,"education","race"),
+        sep = "!!"
+      ) %>% 
+      filter(!is.na(education)) %>% 
+      mutate(race = census_race_labels[x])
+  })
+
+
+bay_education_sex <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs1",
+      vintage = 2019,
+      region = "county:013",
+      regionin = "state:06",
+      vars = paste0("group(B15002",LETTERS[x],")")
+    ) %>%
+      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+      pivot_longer(
+        ends_with("E"),
+        names_to = "variable",
+        values_to = "estimate"
+      ) %>%
+      left_join(
+        acs_vars_2019_1yr %>% 
+          select(name, label), 
+        by = c("variable" = "name")
+      ) %>% 
+      select(-variable) %>% 
+      separate(
+        label,
+        into = c(NA,NA,"sex","education"),
+        sep = "!!"
+      ) %>% 
+      filter(!is.na(education))
+  })
+```
+
+## Contra Costa County Education by Race for Population 25 Years and Older: Stacked and Filled Bar Charts
+#### By looking at the filled bar chart below, we can see that there is disproportionate education attainment by race in Contra Costa County. We can see that there is a higher proportion of Some Other Race Alone with high school and below levels of education than equivalent to their proportion in the total population. Furthermore, the population of Other Race Alone has a lower proportion for some college, Bachelor's and Master's degrees compared to their overall population. We can also see that Whites and Asians have opposite distributions of Some Other Race Alone with smaller porportions in the lower education levels and higher proportions in the higher education levels. Blacks and Two or More Races seem to be more equally distrubuted across the education levels except that there is a much lower proportion of Blacks in the less than 9th grade education level.
+
+```{r}
+bay_education_race %>% 
+  group_by(education, race) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = education %>% factor(levels = rev(bay_education_race$education[1:8])),
+      y = estimate,
+      fill = race
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Household Education",
+    y = "Number of households",
+    title = "Bay Area Household Education by Race for Population Over 25 Years Old",
+    fill = "Race of householder"
+  ) +
+  coord_flip()
+
+bay_race_total <-
+  bay_education_race %>% 
+  group_by(race) %>% 
+  mutate(education = "Total")
+
+bay_education_race %>% 
+  group_by(education, race) %>% 
+  rbind(bay_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = education %>% factor(levels = rev(c("Total",bay_education_race$education[1:8]))),
+      y = estimate,
+      fill = race
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Household education",
+    y = "Proportion of households",
+    title = "Bay Area household education by race for Population Over 25 Years Old",
+    fill = "Race of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+
+```
+
+## Contra Costa County Education by Gender for Population 25 Years and Older: Stacked and Filled Bar Charts
+#### By looking at the filled bar chart below, we can see that there is a pretty equivalent education attainment by gender in Contra Costa County. Besides the GED level of education which had a higher proportion of males, the rest of the education levels were pretty equivalent gender wise to the total population proportions.
+
+```{r}
+bay_education_sex %>% 
+  group_by(education, sex) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = education %>% factor(levels = rev(bay_education_sex$education[1:8])),
+      y = estimate,
+      fill = sex
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Household Education",
+    y = "Number of households",
+    title = "Bay Area household education by Gender for Population Over 25 Years Old",
+    fill = "Gender of householder"
+  ) +
+  coord_flip()
+
+
+
+bay_sex_total <-
+  bay_education_sex %>% 
+  group_by(sex) %>% 
+  mutate(education = "Total")
+
+bay_education_sex %>% 
+  group_by(education, sex) %>% 
+  rbind(bay_sex_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = education %>% factor(levels = rev(c("Total",bay_education_sex$education[1:8]))),
+      y = estimate,
+      fill = sex
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Household education",
+    y = "Proportion of households",
+    title = "Bay Area household education by Gender for Population Over 25 Years Old",
+    fill = "Gender of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+```
+
+# Number and Percentage of K-12 students who have no internet access at home.
+## Loading Pums Data
+```{r}
+# temp <- tempfile()
+# download.file("https://www2.census.gov/programs-surveys/acs/data/pums/2019/1-Year/csv_hca.zip",destfile = temp, mode = "wb")
+# 
+# pums_hca_2019_1yr <- read_csv(unzip(temp,"psam_h06.csv"))
+# 
+# unlink(temp)
+# 
+```
+
+```{r}
+# install.packages("devtools")
+# 
+# devtools::install_github("walkerke/tidycensus")
+```
+
+```{r}
+library(tidycensus)
+
+census_api_key("c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+pums_vars_2019 <- 
+  pums_variables %>%
+  filter(year == 2019, survey == "acs1")
+
+pums_vars_2019_distinct_hh <- 
+  pums_vars_2019 %>%
+  distinct(var_code, var_label, data_type, level) %>% 
+  filter(level == "housing")
+```
+
+```{r,results = "hide"}
+ca_pums <- get_pums(
+  variables = c(
+    "PUMA",
+    "ACCESS",
+    "AGEP",
+    "SCHG"
+  ),
+  state = "CA",
+  year = 2018,
+  survey = "acs1",
+  recode = T
+)
+```
+## Selecting Counties and Pum's Data
+```{r}
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+bay_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% bay_county_names)
+
+ca_pumas <-
+  pumas("CA", cb = T, progress_bar = F)
+
+bay_pumas <-
+  ca_pumas %>% 
+  st_centroid() %>% 
+  .[bay_counties, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(ca_pumas %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+bay_pums <-
+  ca_pums %>% 
+  filter(PUMA %in% bay_pumas$PUMACE10)
+```
+## Map of the Percent of K-12th graders with no access to internet
+#### This data was pretty useful to present some of the challenges of remote learning in 2020 and you can see the results in the map below. We can see that most students with no access to internet are located near Alameda/San Leandro. However, there are also many other factors that could contribute to difficulties in remote learning that were not taken in to account in this analysis. Firstly, this data is from 2019 so it might not be as accurate as data from this year. Furthermore, this analysis just takes into account internet access per household. It does not delve into how many children there are per house or how many devices/computers the household has, and if it's enough for all of the children to complete their lessons. Furthermore, this analysis only takes into account internet access and not reliability, nor does it take into account study space noise and comfort scenarios of studying remotely.
+
+```{r}
+bay_pums_example <-
+  bay_pums %>% 
+  filter(!duplicated(SERIALNO)) %>% 
+  mutate(
+    no_access = ifelse(
+      (ACCESS == 3) &
+        (SCHG %in% c("02", "03", "04", "05","06", "07","08", "09","10", "11","12", "13","14")),
+      PWGTP,
+      0
+    )
+  ) %>% 
+  group_by(PUMA) %>% 
+  summarize(
+    perc_no_access =
+      sum(no_access, na.rm =T)/sum(PWGTP, na.rm = T)*100
+  ) %>% 
+  left_join(
+    bay_pumas %>% 
+      select(PUMACE10),
+    by = c("PUMA" = "PUMACE10")
+  ) %>% 
+  st_as_sf()
+
+pums_pal <- colorNumeric(
+  palette = "Oranges",
+  domain = bay_pums_example$perc_no_access
+)
+
+leaflet() %>%
+  addTiles() %>% 
+  addPolygons(
+    data = bay_pums_example,
+    fillColor = ~pums_pal(perc_no_access),
+    color = "white",
+    opacity = 0.5,
+    fillOpacity = 0.5,
+    weight = 1,
+    label = ~paste0(
+      round(perc_no_access), 
+      "Percent of K-12th graders with no access to internet"
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = bay_pums_example,
+    pal = pums_pal,
+    values = ~perc_no_access,
+    title = "Percent of K-12th<br>graders with no<br>access to internet"
+  )
+```
+## Map of the Number of K-12th graders with no access to internet
+
+```{r}
+bay_pums_example <-
+  bay_pums %>% 
+  filter(!duplicated(SERIALNO)) %>% 
+  mutate(
+    no_access = ifelse(
+      (ACCESS == 3) &
+        (SCHG %in% c("02", "03", "04", "05","06", "07","08", "09","10", "11","12", "13","14")),
+      PWGTP,
+      0
+    )
+  ) %>% 
+  group_by(PUMA) %>% 
+  summarize(
+    perc_no_access =
+      sum(no_access, na.rm =T)
+  ) %>% 
+  left_join(
+    bay_pumas %>% 
+      select(PUMACE10),
+    by = c("PUMA" = "PUMACE10")
+  ) %>% 
+  st_as_sf()
+
+pums_pal <- colorNumeric(
+  palette = "Oranges",
+  domain = bay_pums_example$perc_no_access
+)
+
+leaflet() %>%
+  addTiles() %>% 
+  addPolygons(
+    data = bay_pums_example,
+    fillColor = ~pums_pal(perc_no_access),
+    color = "white",
+    opacity = 0.5,
+    fillOpacity = 0.5,
+    weight = 1,
+    label = ~paste0(
+      round(perc_no_access), 
+      "Number of K-12th graders with no access to internet"
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = bay_pums_example,
+    pal = pums_pal,
+    values = ~perc_no_access,
+    title = "Number of K-12th<br>graders with no<br>access to internet"
+  )
+```
+
+## Migration Analysis of Contra Costa Residents by Education
+### This analysis used data from the years 2018 and 2019. The population in this data are all 25 years old and over.
+
+```{r}
+smc_mobility_current_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:013",
+    regionin = "state:06",
+    vars = c("group(B07009)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","education"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    mobility = ifelse(
+      mobility %in% c("Same house 1 year ago:", "Moved within same county:"),
+      "Here since last year",
+      "Inflow"
+    )
+  ) %>% 
+  filter(!is.na(education)) %>% 
+  group_by(mobility, education) %>% 
+  summarize(estimate = sum(estimate))
+```
+
+```{r}
+smc_mobility_lastyear_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:013",
+    regionin = "state:06",
+    vars = c("group(B07409)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","education"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    mobility = ifelse(
+      mobility %in% c("Same house:", "Moved within same county:"),
+      "Here since last year",
+      "Outflow"
+    )
+  ) %>% 
+  filter(!is.na(education)) %>% 
+  group_by(mobility, education) %>% 
+  summarize(estimate = sum(estimate))
+```
+
+
+```{r}
+smc_mobility_current_18 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2018,
+    region = "county:013",
+    regionin = "state:06",
+    vars = c("group(B07009)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","education"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    mobility = "Here last year"
+  ) %>% 
+  filter(!is.na(education)) %>% 
+  group_by(mobility, education) %>% 
+  summarize(estimate = sum(estimate))
+```
+## Final Migration Data for Contra Costa County
+#### Based on the table below, we can make some interpretations about the "educational mobility" of Contra Costa Residents who are 25 years and older. We can see that there is an internal net gain in less than high shool and highschool graduate education level which is most likely due to people turning 25 and now being counted. There is also an Internal net loss in some college, Bachelor's and Graduate education levels most likely due to death's of degree holding residents. For the External gains we see increases in all levels of education except for high school graduates. There is a very large External net gain of Bachelor's and Graduate education levels, signalling that Contra Costa County may be a wealthier area where higher education/Income level people are moving in and lower education/income level residents are being displaced and are moving out. 
+
+```{r,results = "markup"}
+smc_flows_19 <-
+  rbind(
+    smc_mobility_current_18,
+    smc_mobility_lastyear_19 %>% 
+      filter(mobility == "Outflow"),
+    smc_mobility_current_19 %>% 
+      filter(mobility == "Inflow"),
+    smc_mobility_current_19 %>% 
+      group_by(education) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(mobility = "Here this year")
+  ) %>% 
+  pivot_wider(
+    names_from = mobility,
+    values_from = estimate
+  ) %>% 
+  mutate(
+    `External net` = Inflow - Outflow,
+    `Internal net` = `Here this year` - `Here last year` - `External net`,
+  ) %>% 
+  select(
+    `Education Level` = education, 
+    `Internal net`,
+    `External net`,
+    `Here last year`, 
+    `Here this year`, 
+    Outflow, 
+    Inflow
+  )
+
+smc_flows_19_ordered = smc_flows_19[c(4,3,5,1,2),]
+
+print.data.frame(smc_flows_19_ordered)
+```
+
