@@ -1,8 +1,21 @@
 ---
-title: "CEE 218 HW 9"
+title: "CEE 218X Assignment 9"
 output:
-  flexdashboard::flex_dashboard
+  flexdashboard::flex_dashboard:
+    theme: spacelab
 ---
+
+Inputs {.sidebar}
+------------------------------------------------
+This dashboard presents data on changes in energy use for the Bay Area including focusing on if and how changes have occurred due to Covid-19.
+
+In the line chart on the immediate right we can see that there is not a huge shift in electricity consumption from pre Covid-19 times to post Covid-19 times. We can detect drops in commercial gas and electric consumption with increases in residential gas and electric consumption. However, separating those occurrences from normal energy trends due to weather and other factors make it difficult to determine if the noticed trends are solely caused by Covid-19. We can see these trends by noticing that energy consumption for residential buildings is highest in the winter (presumably for heating), while commercial buildings have their energy peaks in the summer (mostly for cooling). Along with the cyclical/seasonal pattern, the graph shows a large spike on September of 2017 across all four categories. This could either be due to a large increase in energy consumption during that period, or might simply be a measurement error by PGE.
+
+
+In the map on the far right we can see the percentage change of electricity consumption for residential buildings to determine the possible effects of Covid-19. For this analysis we compare the total electricity consumption for each zipcode in the Bay Area for the months of April, May, and June of 2019 and 2020. We compared these two time frames so as to eliminate confounding factors such as seasonal weather, which could mask the effects of Covid. In the map below we can see that most of the zipcodes had a 5 to 20% increase in residential electricity consumption with only a handful showing decreases in electricity consumption.
+
+Inputs {.sidebar}
+------------------------------------------------
 
 ```{r setup, include=F,echo=F}
 rm(list=ls())
@@ -204,17 +217,22 @@ both_matrix <-
   mutate('Date'= paste(sep = '-',YEAR,MONTH,'01') %>% as.Date())
 ```
 
-------------------------------------------------------------------------------------------
+Column
+----------------------------------------------
 
-## Line Chart of Energy Consumption for Residential and Commercial in KBTUs Over Time
+Line Chart of Energy Consumption for Residential and Commercial in KBTUs Over Time
 
 
-```{r}
-ggplot(both_matrix, aes(x=Date, y=TOTALKBTU, group=CUSTOMERCLASS, color=CUSTOMERCLASS)) +
+```{r,fig.width=6,fig.height=8}
+x = ggplot(both_matrix, aes(x=Date, y=TOTALKBTU, group=CUSTOMERCLASS, color=CUSTOMERCLASS)) +
   ylab("Total Energy (KBTU)")+ggtitle("Electricity and Gas Usage for 9 Bay Area Counties 2017 - 2020")+
   geom_line(size=1)
+
+ggplotly(x)
 ```
 
+Column
+----------------------------------------------
 
 ```{r,include=F}
 ca_counties <- counties("CA", cb = T, progress_bar = F)
@@ -330,11 +348,13 @@ elec_2019 %>% na.omit()
 elec_2019 <- elec_2019[which(elec_2019$Perc_Difference > -40), ]
 ```
 
------------------------------------------------------------------------------------------
-## Map of the Percentage Change in Residential Electricity Consumption Due to Covid-19
+Column
+----------------------------------------------
+
+Map of the Percentage Change in Residential Electricity Consumption Due to Covid-19
 
 
-```{r}
+```{r,fig.width=6,fig.height=8}
 res_pal <- colorNumeric(
   palette = "RdYlBu",
   domain = 
@@ -367,3 +387,6 @@ leaflet() %>%
     title = "Total Residential Percentage Difference<br> between Q2 of 2019 and Q2 of 2020"
   )
 ```
+
+Column
+----------------------------------------------
