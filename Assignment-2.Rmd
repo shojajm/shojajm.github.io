@@ -321,7 +321,6 @@ bay_pums <-
 ```{r}
 bay_pums_example <-
   bay_pums %>% 
-  filter(!duplicated(SERIALNO)) %>% 
   mutate(
     SCHG = as.numeric(SCHG),
     no_access = ifelse(
@@ -378,7 +377,6 @@ leaflet() %>%
 ```{r}
 bay_pums_example <-
   bay_pums %>% 
-  filter(!duplicated(SERIALNO)) %>% 
   mutate(
     SCHG = as.numeric(SCHG),
     no_access = ifelse(
