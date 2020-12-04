@@ -323,6 +323,7 @@ bay_pums_example <-
   bay_pums %>% 
   filter(!duplicated(SERIALNO)) %>% 
   mutate(
+    SCHG = as.numeric(SCHG),
     no_access = ifelse(
       (ACCESS == "3") &
         (SCHG %in% 2:14),
@@ -379,6 +380,7 @@ bay_pums_example <-
   bay_pums %>% 
   filter(!duplicated(SERIALNO)) %>% 
   mutate(
+    SCHG = as.numeric(SCHG),
     no_access = ifelse(
       (ACCESS == "3") &
         (SCHG %in% 2:14),
